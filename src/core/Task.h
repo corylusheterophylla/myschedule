@@ -8,17 +8,16 @@ enum Priority { HIGH = 0, MEDIUM = 1, LOW = 2 };
 enum Category { STUDY = 0, ENTERTAINMENT = 1, LIFE = 2 };
 
 struct Task {
-    int id;                 // 唯一ID（自动递增）
-    std::string name;       // 任务名称
-    std::string startTime;  // 格式: "2026-07-23 14:30"
-    Priority priority;      // 默认 MEDIUM
-    Category category;      // 默认 LIFE
-    std::string remindTime; // 可为空
+    int id;
+    std::string name;
+    std::string startTime;   // 格式: "YYYY-MM-DD HH:MM"
+    Priority priority;
+    Category category;
+    std::string remindTime;  // 可为空，格式同 startTime
+    bool reminded;           // 是否已提醒
 
-    // 构造函数：设置默认值
-    Task() : id(0), priority(MEDIUM), category(LIFE) {}
+    Task() : id(0), priority(MEDIUM), category(LIFE), reminded(false) {}
     
-    // 用于唯一性校验（任务名+开始时间）
     bool operator==(const Task& other) const {
         return name == other.name && startTime == other.startTime;
     }

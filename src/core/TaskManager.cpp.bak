@@ -24,13 +24,13 @@ void TaskManager::loadFromFile(const std::string& username) {
     nextId = getMaxIdFromTasks() + 1;
 }
 
-void TaskManager::saveToFile() const {
+bool TaskManager::saveToFile() const {
     if (currentUser.empty()) {
         std::cerr << "Error: No user logged in!" << std::endl;
-        return;
+        return false;
     }
     std::lock_guard<std::mutex> lock(mtx);
-    Storage::saveTasks(currentUser, tasks);
+    return Storage::saveTasks(currentUser, tasks);
 }
 
 bool TaskManager::isTaskExists(const std::string& name, const std::string& startTime) const {
@@ -49,6 +49,7 @@ bool TaskManager::addTask(const std::string& name,
                           Category category, 
                           const std::string& remindTime) {
     std::lock_guard<std::mutex> lock(mtx);
+    // 唯一性校验
     for (const auto& t : tasks) {
         if (t.name == name && t.startTime == startTime) {
             std::cerr << "Error: Task with same name and start time already exists!" << std::endl;
@@ -65,10 +66,11 @@ bool TaskManager::addTask(const std::string& name,
     newTask.remindTime = remindTime;
     newTask.reminded = false;
 
-    auto backup = tasks;
+    // 先保存到文件，确保成功再添加到内存
+    auto backup = tasks;  // 备份旧状态
     tasks.push_back(newTask);
     if (!Storage::saveTasks(currentUser, tasks)) {
-        tasks = backup;
+        tasks = backup;   // 回滚
         std::cerr << "Error: Failed to save task to file, task not added." << std::endl;
         return false;
     }
@@ -90,7 +92,7 @@ bool TaskManager::deleteTask(int id) {
     auto backup = tasks;
     tasks.erase(it);
     if (!Storage::saveTasks(currentUser, tasks)) {
-        tasks = backup;
+        tasks = backup;   // 回滚
         std::cerr << "Error: Failed to save deletion to file, task not deleted." << std::endl;
         return false;
     }

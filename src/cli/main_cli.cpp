@@ -4,35 +4,35 @@
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
+#include <thread>
+#include <atomic>
+#include <chrono>
 #include "TaskManager.h"
 #include "UserManager.h"
 
-// 工具函数：字符串分割
+// 工具函数：字符串分割（支持引号）
 std::vector<std::string> splitArgs(const std::string& str) {
     std::vector<std::string> args;
     std::istringstream iss(str);
     std::string token;
-    while (iss >> std::quoted(token)) { // 支持引号包裹的空格
+    while (iss >> std::quoted(token)) {
         args.push_back(token);
     }
     return args;
 }
 
-// 解析优先级字符串
 Priority parsePriority(const std::string& str) {
     if (str == "high" || str == "高") return HIGH;
     if (str == "low" || str == "低") return LOW;
-    return MEDIUM; // 默认中
+    return MEDIUM;
 }
 
-// 解析分类字符串
 Category parseCategory(const std::string& str) {
     if (str == "study" || str == "学习") return STUDY;
     if (str == "entertainment" || str == "娱乐") return ENTERTAINMENT;
-    return LIFE; // 默认生活
+    return LIFE;
 }
 
-// 显示任务列表（表格对齐）
 void printTasks(const std::vector<Task>& tasks, const std::string& title = "") {
     if (!title.empty()) {
         std::cout << "\n=== " << title << " ===" << std::endl;
@@ -48,11 +48,13 @@ void printTasks(const std::vector<Task>& tasks, const std::string& title = "") {
               << std::setw(10) << "优先级" 
               << std::setw(10) << "分类" 
               << std::setw(18) << "提醒时间" 
+              << std::setw(10) << "已提醒" 
               << std::endl;
-    std::cout << std::string(80, '-') << std::endl;
+    std::cout << std::string(90, '-') << std::endl;
     for (const auto& t : tasks) {
         std::string prioStr = (t.priority == HIGH) ? "高" : (t.priority == MEDIUM ? "中" : "低");
         std::string catStr = (t.category == STUDY) ? "学习" : (t.category == ENTERTAINMENT ? "娱乐" : "生活");
+        std::string remindedStr = t.reminded ? "是" : "否";
         std::cout << std::left 
                   << std::setw(5) << t.id 
                   << std::setw(18) << t.name 
@@ -60,15 +62,24 @@ void printTasks(const std::vector<Task>& tasks, const std::string& title = "") {
                   << std::setw(10) << prioStr 
                   << std::setw(10) << catStr 
                   << std::setw(18) << t.remindTime 
+                  << std::setw(10) << remindedStr
                   << std::endl;
     }
 }
 
-// 交互式 Shell 处理函数
+// 交互式 Shell（带后台提醒线程）
 void runInteractiveShell(const std::string& username) {
     TaskManager tm;
     tm.loadFromFile(username);
     std::cout << "\n欢迎, " << username << "! 输入 help 查看命令列表。" << std::endl;
+
+    std::atomic<bool> stopReminder(false);
+    std::thread reminderThread([&tm, &stopReminder]() {
+        while (!stopReminder.load()) {
+            tm.checkReminders();
+            std::this_thread::sleep_for(std::chrono::seconds(10));
+        }
+    });
 
     std::string line;
     while (true) {
@@ -83,6 +94,9 @@ void runInteractiveShell(const std::string& username) {
         std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::tolower);
 
         if (cmd == "quit" || cmd == "exit" || cmd == "q") {
+            std::cout << "正在退出，停止提醒线程..." << std::endl;
+            stopReminder.store(true);
+            if (reminderThread.joinable()) reminderThread.join();
             std::cout << "再见！" << std::endl;
             break;
         }
@@ -136,7 +150,9 @@ void runInteractiveShell(const std::string& username) {
         }
         else if (cmd == "list") {
             auto tasks = tm.getAllTasks();
-            printTasks(tasks, "全部任务");
+            // 由于 getAllTasks 返回 const 引用，但内部有锁，返回的引用在锁释放后可能被修改？实际上 get 函数返回引用，但调用后锁已释放，我们复制一份更安全。
+            std::vector<Task> copy = tasks;
+            printTasks(copy, "全部任务");
         }
         else {
             std::cout << "未知命令: " << cmd << "，输入 help 查看帮助。" << std::endl;
@@ -167,7 +183,6 @@ int main(int argc, char* argv[]) {
 
         // 尝试认证
         if (!UserManager::authenticate(username, password)) {
-            // 认证失败，尝试自动注册（新用户）
             std::cout << "用户不存在或密码错误。是否注册新用户？(y/n): ";
             char choice;
             std::cin >> choice;
@@ -200,9 +215,7 @@ int main(int argc, char* argv[]) {
     std::string password = argv[2];
     std::string command = argv[3];
 
-    // 认证
     if (!UserManager::authenticate(username, password)) {
-        // 尝试自动注册（方便测试）
         std::cout << "用户未注册，正在自动注册..." << std::endl;
         if (!UserManager::registerUser(username, password)) {
             std::cerr << "注册失败！" << std::endl;
@@ -211,11 +224,9 @@ int main(int argc, char* argv[]) {
         std::cout << "新用户注册成功！" << std::endl;
     }
 
-    // 加载任务管理器
     TaskManager tm;
     tm.loadFromFile(username);
 
-    // 解析命令
     if (command == "addtask" || command == "add") {
         if (argc < 6) {
             std::cerr << "用法: addtask <任务名> <开始时间> [优先级] [分类] [提醒时间]" << std::endl;
