@@ -1,80 +1,262 @@
 #include <iostream>
+#include <string>
+#include <vector>
+#include <sstream>
 #include <iomanip>
+#include <algorithm>
 #include "TaskManager.h"
 #include "UserManager.h"
 
-void printTasks(const std::vector<Task>& tasks, const std::string& title) {
-    std::cout << "\n=== " << title << " ===" << std::endl;
+// 工具函数：字符串分割
+std::vector<std::string> splitArgs(const std::string& str) {
+    std::vector<std::string> args;
+    std::istringstream iss(str);
+    std::string token;
+    while (iss >> std::quoted(token)) { // 支持引号包裹的空格
+        args.push_back(token);
+    }
+    return args;
+}
+
+// 解析优先级字符串
+Priority parsePriority(const std::string& str) {
+    if (str == "high" || str == "高") return HIGH;
+    if (str == "low" || str == "低") return LOW;
+    return MEDIUM; // 默认中
+}
+
+// 解析分类字符串
+Category parseCategory(const std::string& str) {
+    if (str == "study" || str == "学习") return STUDY;
+    if (str == "entertainment" || str == "娱乐") return ENTERTAINMENT;
+    return LIFE; // 默认生活
+}
+
+// 显示任务列表（表格对齐）
+void printTasks(const std::vector<Task>& tasks, const std::string& title = "") {
+    if (!title.empty()) {
+        std::cout << "\n=== " << title << " ===" << std::endl;
+    }
     if (tasks.empty()) {
         std::cout << "(无任务)" << std::endl;
         return;
     }
     std::cout << std::left 
-              << std::setw(4) << "ID" 
-              << std::setw(20) << "任务名" 
-              << std::setw(20) << "开始时间" 
+              << std::setw(5) << "ID" 
+              << std::setw(18) << "任务名" 
+              << std::setw(18) << "开始时间" 
               << std::setw(10) << "优先级" 
               << std::setw(10) << "分类" 
-              << std::setw(20) << "提醒时间" 
+              << std::setw(18) << "提醒时间" 
               << std::endl;
     std::cout << std::string(80, '-') << std::endl;
     for (const auto& t : tasks) {
         std::string prioStr = (t.priority == HIGH) ? "高" : (t.priority == MEDIUM ? "中" : "低");
         std::string catStr = (t.category == STUDY) ? "学习" : (t.category == ENTERTAINMENT ? "娱乐" : "生活");
         std::cout << std::left 
-                  << std::setw(4) << t.id 
-                  << std::setw(20) << t.name 
-                  << std::setw(20) << t.startTime 
+                  << std::setw(5) << t.id 
+                  << std::setw(18) << t.name 
+                  << std::setw(18) << t.startTime 
                   << std::setw(10) << prioStr 
                   << std::setw(10) << catStr 
-                  << std::setw(20) << t.remindTime 
+                  << std::setw(18) << t.remindTime 
                   << std::endl;
     }
 }
 
-int main() {
-    std::cout << "====== MySchedule 阶段2 测试 ======" << std::endl;
-    std::cout << "测试用户: testuser" << std::endl;
-
-    // 1. 创建管理器并加载数据（如果文件不存在则创建空列表）
+// 交互式 Shell 处理函数
+void runInteractiveShell(const std::string& username) {
     TaskManager tm;
-    tm.loadFromFile("testuser");
+    tm.loadFromFile(username);
+    std::cout << "\n欢迎, " << username << "! 输入 help 查看命令列表。" << std::endl;
 
-    // 2. 添加任务（演示默认值和指定值）
-    tm.addTask("完成大作业", "2026-07-23 22:00", HIGH, STUDY, "2026-07-23 21:50");
-    tm.addTask("健身锻炼", "2026-07-24 07:00", MEDIUM, LIFE, "2026-07-24 06:50");
-    tm.addTask("看书学习", "2026-07-23 15:00", LOW, STUDY, ""); // 使用默认分类LIFE？等一下，这里我传了STUDY
-    // 让第三个任务更明显一点
-    tm.addTask("买菜", "2026-07-24 18:00", LOW, LIFE, "");
+    std::string line;
+    while (true) {
+        std::cout << "\n[myschedule]> ";
+        std::getline(std::cin, line);
+        if (line.empty()) continue;
 
-    // 3. 测试唯一性约束（故意添加重复的，应该报错）
-    std::cout << "\n[测试唯一性] 尝试添加重复任务 (完成大作业 + 2026-07-23 22:00):" << std::endl;
-    tm.addTask("完成大作业", "2026-07-23 22:00");
+        auto args = splitArgs(line);
+        if (args.empty()) continue;
 
-    // 4. 按天查询
-    auto tasks23 = tm.getTasksForDate("2026-07-23");
-    printTasks(tasks23, "2026-07-23 的任务");
+        std::string cmd = args[0];
+        std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::tolower);
 
-    // 5. 按月份查询
-    auto tasksMonth = tm.getTasksForMonth("2026-07");
-    printTasks(tasksMonth, "2026-07 所有任务");
+        if (cmd == "quit" || cmd == "exit" || cmd == "q") {
+            std::cout << "再见！" << std::endl;
+            break;
+        }
+        else if (cmd == "help") {
+            std::cout << "可用命令:\n"
+                      << "  add <任务名> <开始时间> [优先级] [分类] [提醒时间]\n"
+                      << "     例: add \"写大作业\" \"2026-07-24 14:00\" high study \"2026-07-24 13:50\"\n"
+                      << "  del <任务ID>\n"
+                      << "  show day <日期>       (例: show day 2026-07-24)\n"
+                      << "  show month <年月>     (例: show month 2026-07)\n"
+                      << "  list                  显示全部任务\n"
+                      << "  quit / exit           退出程序\n";
+        }
+        else if (cmd == "add") {
+            if (args.size() < 3) {
+                std::cout << "用法: add <任务名> <开始时间> [优先级] [分类] [提醒时间]" << std::endl;
+                continue;
+            }
+            std::string name = args[1];
+            std::string startTime = args[2];
+            Priority prio = (args.size() > 3) ? parsePriority(args[3]) : MEDIUM;
+            Category cat = (args.size() > 4) ? parseCategory(args[4]) : LIFE;
+            std::string remind = (args.size() > 5) ? args[5] : "";
 
-    // 6. 删除任务（删除ID为1的任务）
-    std::cout << "\n[删除] 删除任务 ID=1 ..." << std::endl;
-    tm.deleteTask(1);
+            tm.addTask(name, startTime, prio, cat, remind);
+        }
+        else if (cmd == "del") {
+            if (args.size() < 2) {
+                std::cout << "用法: del <任务ID>" << std::endl;
+                continue;
+            }
+            int id = std::stoi(args[1]);
+            tm.deleteTask(id);
+        }
+        else if (cmd == "show") {
+            if (args.size() < 3) {
+                std::cout << "用法: show day <日期> 或 show month <年月>" << std::endl;
+                continue;
+            }
+            std::string type = args[1];
+            std::string time = args[2];
+            if (type == "day") {
+                auto tasks = tm.getTasksForDate(time);
+                printTasks(tasks, time + " 的任务");
+            } else if (type == "month") {
+                auto tasks = tm.getTasksForMonth(time);
+                printTasks(tasks, time + " 的任务");
+            } else {
+                std::cout << "未知的 show 类型，使用 day 或 month" << std::endl;
+            }
+        }
+        else if (cmd == "list") {
+            auto tasks = tm.getAllTasks();
+            printTasks(tasks, "全部任务");
+        }
+        else {
+            std::cout << "未知命令: " << cmd << "，输入 help 查看帮助。" << std::endl;
+        }
+    }
+}
 
-    // 7. 再次查看剩余任务
-    auto remaining = tm.getAllTasks();
-    printTasks(remaining, "删除后的全部任务");
+// ============ 主函数入口 ============
+int main(int argc, char* argv[]) {
+    if (argc < 2) {
+        std::cout << "MySchedule 日程管理系统 v1.0" << std::endl;
+        std::cout << "用法:\n"
+                  << "  交互式模式: " << argv[0] << " run\n"
+                  << "  一次性命令: " << argv[0] << " <用户名> <密码> addtask|deltask|showtask ...\n"
+                  << "  输入 " << argv[0] << " run 然后根据提示操作。" << std::endl;
+        return 0;
+    }
 
-    // 8. 测试密码加密（复用之前的）
-    std::cout << "\n=== 密码验证测试 ===" << std::endl;
-    std::string pwd = "123456";
-    std::string hash = UserManager::hashPassword(pwd);
-    std::cout << "密码明文: " << pwd << std::endl;
-    std::cout << "SHA256: " << hash << std::endl;
-    std::cout << "验证结果: " << (UserManager::verifyPassword(pwd, hash) ? "成功" : "失败") << std::endl;
+    std::string arg1 = argv[1];
 
-    std::cout << "\n所有阶段2功能测试完成！数据已保存到 data/testuser_tasks.json" << std::endl;
+    // ----- 模式 A：交互式 Shell -----
+    if (arg1 == "run") {
+        std::string username, password;
+        std::cout << "用户名: ";
+        std::cin >> username;
+        std::cout << "密码: ";
+        std::cin >> password;
+
+        // 尝试认证
+        if (!UserManager::authenticate(username, password)) {
+            // 认证失败，尝试自动注册（新用户）
+            std::cout << "用户不存在或密码错误。是否注册新用户？(y/n): ";
+            char choice;
+            std::cin >> choice;
+            if (choice == 'y' || choice == 'Y') {
+                if (UserManager::registerUser(username, password)) {
+                    std::cout << "注册成功！欢迎, " << username << "!" << std::endl;
+                } else {
+                    std::cout << "注册失败，请重试。" << std::endl;
+                    return 1;
+                }
+            } else {
+                std::cout << "认证失败，退出。" << std::endl;
+                return 1;
+            }
+        } else {
+            std::cout << "登录成功！" << std::endl;
+        }
+
+        runInteractiveShell(username);
+        return 0;
+    }
+
+    // ----- 模式 B：一次性命令（需要至少 4 个参数：用户名 密码 命令 ...）-----
+    if (argc < 4) {
+        std::cerr << "一次性命令需要提供: 用户名 密码 命令" << std::endl;
+        return 1;
+    }
+
+    std::string username = argv[1];
+    std::string password = argv[2];
+    std::string command = argv[3];
+
+    // 认证
+    if (!UserManager::authenticate(username, password)) {
+        // 尝试自动注册（方便测试）
+        std::cout << "用户未注册，正在自动注册..." << std::endl;
+        if (!UserManager::registerUser(username, password)) {
+            std::cerr << "注册失败！" << std::endl;
+            return 1;
+        }
+        std::cout << "新用户注册成功！" << std::endl;
+    }
+
+    // 加载任务管理器
+    TaskManager tm;
+    tm.loadFromFile(username);
+
+    // 解析命令
+    if (command == "addtask" || command == "add") {
+        if (argc < 6) {
+            std::cerr << "用法: addtask <任务名> <开始时间> [优先级] [分类] [提醒时间]" << std::endl;
+            return 1;
+        }
+        std::string name = argv[4];
+        std::string startTime = argv[5];
+        Priority prio = (argc > 6) ? parsePriority(argv[6]) : MEDIUM;
+        Category cat = (argc > 7) ? parseCategory(argv[7]) : LIFE;
+        std::string remind = (argc > 8) ? argv[8] : "";
+        tm.addTask(name, startTime, prio, cat, remind);
+    }
+    else if (command == "deltask" || command == "del") {
+        if (argc < 5) {
+            std::cerr << "用法: deltask <任务ID>" << std::endl;
+            return 1;
+        }
+        int id = std::stoi(argv[4]);
+        tm.deleteTask(id);
+    }
+    else if (command == "showtask" || command == "show") {
+        if (argc < 6) {
+            std::cerr << "用法: showtask day <日期> 或 showtask month <年月>" << std::endl;
+            return 1;
+        }
+        std::string type = argv[4];
+        std::string time = argv[5];
+        if (type == "day") {
+            auto tasks = tm.getTasksForDate(time);
+            printTasks(tasks, time + " 的任务");
+        } else if (type == "month") {
+            auto tasks = tm.getTasksForMonth(time);
+            printTasks(tasks, time + " 的任务");
+        } else {
+            std::cerr << "无效的 show 类型，使用 day 或 month" << std::endl;
+        }
+    }
+    else {
+        std::cerr << "未知命令: " << command << std::endl;
+        return 1;
+    }
+
     return 0;
 }

@@ -2,6 +2,36 @@
 #include <openssl/sha.h>
 #include <sstream>
 #include <iomanip>
+#include <fstream>
+#include <nlohmann/json.hpp>
+#include <iostream>
+
+using json = nlohmann::json;
+
+std::string UserManager::usersFilePath = "data/users.json";
+
+std::unordered_map<std::string, std::string> UserManager::loadUsers() {
+    std::unordered_map<std::string, std::string> users;
+    std::ifstream file(usersFilePath);
+    if (!file.is_open()) return users;
+    
+    json j;
+    file >> j;
+    for (auto& [key, value] : j.items()) {
+        users[key] = value;
+    }
+    return users;
+}
+
+void UserManager::saveUsers(const std::unordered_map<std::string, std::string>& users) {
+    json j(users);
+    std::ofstream file(usersFilePath);
+    if (file.is_open()) {
+        file << j.dump(4);
+    } else {
+        std::cerr << "Warning: Cannot save users file!" << std::endl;
+    }
+}
 
 std::string UserManager::hashPassword(const std::string& password) {
     unsigned char hash[SHA256_DIGEST_LENGTH];
@@ -19,4 +49,23 @@ std::string UserManager::hashPassword(const std::string& password) {
 
 bool UserManager::verifyPassword(const std::string& plain, const std::string& storedHash) {
     return hashPassword(plain) == storedHash;
+}
+
+bool UserManager::registerUser(const std::string& username, const std::string& password) {
+    auto users = loadUsers();
+    if (users.find(username) != users.end()) {
+        return false; // 用户已存在
+    }
+    users[username] = hashPassword(password);
+    saveUsers(users);
+    return true;
+}
+
+bool UserManager::authenticate(const std::string& username, const std::string& password) {
+    auto users = loadUsers();
+    auto it = users.find(username);
+    if (it == users.end()) {
+        return false; // 用户不存在
+    }
+    return verifyPassword(password, it->second);
 }
