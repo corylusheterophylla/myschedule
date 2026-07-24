@@ -3,11 +3,12 @@
 
 #include <QMainWindow>
 #include <QTableWidget>
-#include <QLineEdit>
+#include <QDateTimeEdit>
 #include <QComboBox>
 #include <QPushButton>
 #include <QTimer>
 #include <QStatusBar>
+#include <QSound>
 #include "TaskManager.h"
 
 class MainWindow : public QMainWindow {
@@ -30,8 +31,8 @@ private:
     // UI 组件
     QTableWidget *taskTable;
     QLineEdit *nameEdit;
-    QLineEdit *startEdit;
-    QLineEdit *remindEdit;
+    QDateTimeEdit *startDateTimeEdit;
+    QDateTimeEdit *remindDateTimeEdit;
     QComboBox *priorityCombo;
     QComboBox *categoryCombo;
     QPushButton *addBtn;
@@ -40,8 +41,9 @@ private:
     QTimer *reminderTimer;
 
     void setupUI();
-    void loadTasks();            // 刷新表格
+    void loadTasks();
     void showStatusMessage(const QString& msg, int timeout = 2000);
+    void playAlertSound();   // 播放提示音
 };
 
 #endif

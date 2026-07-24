@@ -3,10 +3,8 @@ add_executable(myschedule_gui
     MainWindow.cpp
 )
 
-# 链接核心库和 Qt 组件
 target_link_libraries(myschedule_gui
     core
     Qt5::Widgets
+    Qt5::Multimedia
 )
-
-# 自动包含 core 头文件路径（从 core 目标继承）
