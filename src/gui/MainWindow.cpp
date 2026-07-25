@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "SettingsDialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -6,12 +7,12 @@
 #include <QHeaderView>
 #include <QMessageBox>
 #include <QDateTime>
-#include <QDebug>
 #include <QSound>
-#include <QLineEdit>        // 新增
-#include <QFile>            // 新增
-#include <QApplication>     // 新增
-
+#include <QLineEdit>
+#include <QFile>
+#include <QApplication>
+#include <QMenuBar>
+#include <QAction>
 MainWindow::MainWindow(const std::string& username, QWidget *parent)
     : QMainWindow(parent), currentUser(username) {
     tm.loadFromFile(username);
@@ -31,11 +32,18 @@ void MainWindow::setupUI() {
     setWindowTitle(QString("日程管理系统 - %1").arg(QString::fromStdString(currentUser)));
     setMinimumSize(950, 650);
 
+    // 菜单栏
+    QMenuBar *menuBar = new QMenuBar(this);
+    QMenu *settingsMenu = menuBar->addMenu("设置");
+    QAction *settingsAction = new QAction("个性化设置", this);
+    settingsMenu->addAction(settingsAction);
+    connect(settingsAction, &QAction::triggered, this, &MainWindow::openSettings);
+    setMenuBar(menuBar);
+
     QWidget *centralWidget = new QWidget(this);
     setCentralWidget(centralWidget);
     QVBoxLayout *mainLayout = new QVBoxLayout(centralWidget);
-
-    // ===== 添加任务区域 =====
+  // 添加任务区域
     QGroupBox *addGroup = new QGroupBox("添加新任务", this);
     QFormLayout *formLayout = new QFormLayout(addGroup);
 
@@ -54,8 +62,7 @@ void MainWindow::setupUI() {
     priorityCombo->addItems({"高", "中", "低"});
     categoryCombo = new QComboBox(this);
     categoryCombo->addItems({"学习", "娱乐", "生活"});
-
-    formLayout->addRow("任务名:", nameEdit);
+  formLayout->addRow("任务名:", nameEdit);
     formLayout->addRow("开始时间:", startDateTimeEdit);
     formLayout->addRow("优先级:", priorityCombo);
     formLayout->addRow("分类:", categoryCombo);
@@ -67,7 +74,7 @@ void MainWindow::setupUI() {
 
     mainLayout->addWidget(addGroup);
 
-    // ===== 任务列表表格 =====
+    // 任务表格
     taskTable = new QTableWidget(this);
     taskTable->setColumnCount(7);
     taskTable->setHorizontalHeaderLabels({"ID", "任务名", "开始时间", "优先级", "分类", "提醒时间", "已提醒"});
@@ -75,8 +82,7 @@ void MainWindow::setupUI() {
     taskTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     taskTable->setSelectionMode(QAbstractItemView::SingleSelection);
     mainLayout->addWidget(taskTable);
-
-    // ===== 操作按钮栏 =====
+// 操作按钮
     QHBoxLayout *btnLayout = new QHBoxLayout();
     delBtn = new QPushButton("删除选中任务", this);
     refreshBtn = new QPushButton("刷新列表", this);
@@ -111,7 +117,6 @@ void MainWindow::loadTasks() {
         taskTable->setItem(i, 6, new QTableWidgetItem(t.reminded ? "是" : "否"));
     }
 }
-
 void MainWindow::showStatusMessage(const QString& msg, int timeout) {
     statusBar()->showMessage(msg, timeout);
 }
@@ -134,7 +139,6 @@ void MainWindow::playAlertSound() {
         QApplication::beep();
     }
 }
-
 // ===== 槽函数 =====
 
 void MainWindow::onAddTask() {
@@ -159,7 +163,6 @@ void MainWindow::onAddTask() {
         QMessageBox::critical(this, "添加失败", "任务名+开始时间已存在，或文件写入失败！");
     }
 }
-
 void MainWindow::onDeleteTask() {
     int row = taskTable->currentRow();
     if (row < 0) {
@@ -189,7 +192,6 @@ void MainWindow::onCheckReminders() {
     tm.checkReminders();
     loadTasks();
 
-    // 简单防重复弹窗（每分钟只弹一次）
     static QString lastRemindTime;
     QString currentTime = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm");
     if (lastRemindTime != currentTime) {
@@ -206,4 +208,8 @@ void MainWindow::onCheckReminders() {
             lastRemindTime = currentTime;
         }
     }
+}
+void MainWindow::openSettings() {
+    SettingsDialog dlg(this);
+    dlg.exec();
 }

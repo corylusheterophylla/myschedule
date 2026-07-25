@@ -22,13 +22,13 @@ private slots:
     void onAddTask();
     void onDeleteTask();
     void onRefresh();
-    void onCheckReminders();  // QTimer 回调
+    void onCheckReminders();
+    void openSettings();   // 设置对话框
 
 private:
     TaskManager tm;
     std::string currentUser;
 
-    // UI 组件
     QTableWidget *taskTable;
     QLineEdit *nameEdit;
     QDateTimeEdit *startDateTimeEdit;
@@ -43,7 +43,7 @@ private:
     void setupUI();
     void loadTasks();
     void showStatusMessage(const QString& msg, int timeout = 2000);
-    void playAlertSound();   // 播放提示音
+    void playAlertSound();
 };
 
 #endif

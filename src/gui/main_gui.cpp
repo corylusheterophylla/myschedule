@@ -8,9 +8,7 @@
 #include <QMessageBox>
 #include "UserManager.h"
 #include "MainWindow.h"
-#include <iostream>
 
-// 自定义登录对话框
 class LoginDialog : public QDialog {
 public:
     LoginDialog(QWidget *parent = nullptr) : QDialog(parent) {
@@ -24,8 +22,7 @@ public:
         userEdit = new QLineEdit(this);
         passEdit = new QLineEdit(this);
         passEdit->setEchoMode(QLineEdit::Password);
-
-        formLayout->addRow("用户名:", userEdit);
+   formLayout->addRow("用户名:", userEdit);
         formLayout->addRow("密码:", passEdit);
         mainLayout->addLayout(formLayout);
 
@@ -56,23 +53,21 @@ private slots:
         std::string p = password.toStdString();
 
         if (!UserManager::authenticate(u, p)) {
-            // 未注册，询问是否注册
             auto reply = QMessageBox::question(this, "用户不存在", 
                                                "用户不存在或密码错误。是否注册新用户？",
                                                QMessageBox::Yes | QMessageBox::No);
             if (reply == QMessageBox::Yes) {
                 if (UserManager::registerUser(u, p)) {
                     QMessageBox::information(this, "注册成功", "注册成功！欢迎使用！");
-                    accept();
+                 accept();
                 } else {
                     QMessageBox::critical(this, "注册失败", "注册失败，请重试。");
                 }
             } else {
-                QMessageBox::warning(this, "取消", "已取消登录");
                 reject();
             }
         } else {
-            accept();  // 认证成功
+            accept();
         }
     }
 
@@ -84,15 +79,13 @@ private:
 int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
 
-    // 显示登录对话框
     LoginDialog loginDlg;
     if (loginDlg.exec() != QDialog::Accepted) {
-        return 0;  // 用户取消
+        return 0;
     }
 
     std::string username = loginDlg.getUsername().toStdString();
     MainWindow mainWin(username);
     mainWin.show();
-
-    return app.exec();
+   return app.exec();
 }
