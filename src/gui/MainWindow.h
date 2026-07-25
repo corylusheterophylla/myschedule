@@ -9,6 +9,7 @@
 #include <QTimer>
 #include <QStatusBar>
 #include <QSound>
+#include <QSet>
 #include "TaskManager.h"
 
 class MainWindow : public QMainWindow {
@@ -17,13 +18,12 @@ class MainWindow : public QMainWindow {
 public:
     explicit MainWindow(const std::string& username, QWidget *parent = nullptr);
     ~MainWindow();
-
 private slots:
     void onAddTask();
     void onDeleteTask();
     void onRefresh();
     void onCheckReminders();
-    void openSettings();   // 设置对话框
+    void openSettings();
 
 private:
     TaskManager tm;
@@ -40,10 +40,15 @@ private:
     QPushButton *refreshBtn;
     QTimer *reminderTimer;
 
+    QString customRingtone;
+    QString customBackground;
+
+    QSet<int> remindedIds;   // 记录本次会话已弹出提醒的任务ID
     void setupUI();
     void loadTasks();
     void showStatusMessage(const QString& msg, int timeout = 2000);
     void playAlertSound();
+    void applySettings();
 };
 
 #endif
