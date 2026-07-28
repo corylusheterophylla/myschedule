@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 #include "SettingsDialog.h"
+#include "EditTaskDialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -15,6 +16,8 @@
 #include <QMenuBar>
 #include <QAction>
 #include <QSettings>
+#include <QDockWidget>
+#include <QProcess>
 
 MainWindow::MainWindow(const std::string& username, QWidget *parent)
     : QMainWindow(parent), currentUser(username) {
@@ -29,8 +32,8 @@ MainWindow::MainWindow(const std::string& username, QWidget *parent)
 }
 
 MainWindow::~MainWindow() {
-    // 停止定时器，防止在析构时继续触发
     reminderTimer->stop();
+    delete reminderTimer;
     tm.saveToFile();
 }
 
@@ -49,20 +52,25 @@ void MainWindow::applySettings() {
 }
 
 void MainWindow::setupUI() {
-    setWindowTitle(QString("日程管理系统 - %1").arg(QString::fromStdString(currentUser)));
-    setMinimumSize(950, 650);
+    setWindowTitle(QString("Schedule Manager - %1").arg(QString::fromStdString(currentUser)));
+    setMinimumSize(1100, 700);
 
+
+  // ---- Menu Bar ----
     QMenuBar *menuBar = new QMenuBar(this);
-    QMenu *settingsMenu = menuBar->addMenu("设置");
-    QAction *settingsAction = new QAction("个性化设置", this);
+    QMenu *settingsMenu = menuBar->addMenu("Settings");
+    QAction *settingsAction = new QAction("Preferences", this);
     settingsMenu->addAction(settingsAction);
     connect(settingsAction, &QAction::triggered, this, &MainWindow::openSettings);
     setMenuBar(menuBar);
-  QWidget *centralWidget = new QWidget(this);
+
+    // ---- Central Widget ----
+    QWidget *centralWidget = new QWidget(this);
     setCentralWidget(centralWidget);
     QVBoxLayout *mainLayout = new QVBoxLayout(centralWidget);
 
-    QGroupBox *addGroup = new QGroupBox("添加新任务", this);
+    // ---- Add Task Group ----
+    QGroupBox *addGroup = new QGroupBox("Add New Task", this);
     QFormLayout *formLayout = new QFormLayout(addGroup);
 
     nameEdit = new QLineEdit(this);
@@ -77,33 +85,38 @@ void MainWindow::setupUI() {
     remindDateTimeEdit->setCalendarPopup(true);
 
     priorityCombo = new QComboBox(this);
-    priorityCombo->addItems({"高", "中", "低"});
+    priorityCombo->addItems({"High", "Medium", "Low"});
     categoryCombo = new QComboBox(this);
-    categoryCombo->addItems({"学习", "娱乐", "生活"});
+    categoryCombo->addItems({"Study", "Entertainment", "Life"});
 
-    formLayout->addRow("任务名:", nameEdit);
-    formLayout->addRow("开始时间:", startDateTimeEdit);
-    formLayout->addRow("优先级:", priorityCombo);
-    formLayout->addRow("分类:", categoryCombo);
-    formLayout->addRow("提醒时间:", remindDateTimeEdit);
+    formLayout->addRow("Task Name:", nameEdit);
+    formLayout->addRow("Start Time:", startDateTimeEdit);
+    formLayout->addRow("Priority:", priorityCombo);
+    formLayout->addRow("Category:", categoryCombo);
+    formLayout->addRow("Remind Time:", remindDateTimeEdit);
 
-    addBtn = new QPushButton("添加任务", this);
+
+   addBtn = new QPushButton("Add Task", this);
     connect(addBtn, &QPushButton::clicked, this, &MainWindow::onAddTask);
     formLayout->addRow("", addBtn);
 
- mainLayout->addWidget(addGroup);
+    mainLayout->addWidget(addGroup);
 
+    // ---- Task Table ----
     taskTable = new QTableWidget(this);
     taskTable->setColumnCount(7);
-    taskTable->setHorizontalHeaderLabels({"ID", "任务名", "开始时间", "优先级", "分类", "提醒时间", "已提醒"});
+    taskTable->setHorizontalHeaderLabels({"ID", "Name", "Start Time", "Priority", "Category", "Remind Time", "Reminded"});
     taskTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     taskTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     taskTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    // 使用 cellDoubleClicked 信号，参数为 (row, column)
+    connect(taskTable, &QTableWidget::cellDoubleClicked, this, &MainWindow::onTableDoubleClicked);
     mainLayout->addWidget(taskTable);
 
+    // ---- Button Bar ----
     QHBoxLayout *btnLayout = new QHBoxLayout();
-    delBtn = new QPushButton("删除选中任务", this);
-    refreshBtn = new QPushButton("刷新列表", this);
+    delBtn = new QPushButton("Delete Selected", this);
+    refreshBtn = new QPushButton("Refresh", this);
     btnLayout->addWidget(delBtn);
     btnLayout->addWidget(refreshBtn);
     btnLayout->addStretch();
@@ -112,27 +125,41 @@ void MainWindow::setupUI() {
     connect(delBtn, &QPushButton::clicked, this, &MainWindow::onDeleteTask);
     connect(refreshBtn, &QPushButton::clicked, this, &MainWindow::onRefresh);
 
-    statusBar()->showMessage("就绪");
+    statusBar()->showMessage("Ready");
+
+
+   // ---- Calendar Dock ----
+    calendarDock = new QDockWidget("Calendar", this);
+    calendar = new QCalendarWidget(this);
+    calendar->setGridVisible(true);
+    connect(calendar, &QCalendarWidget::clicked, this, &MainWindow::onCalendarClicked);
+    calendarDock->setWidget(calendar);
+    addDockWidget(Qt::RightDockWidgetArea, calendarDock);
 }
 
-void MainWindow::loadTasks() {
-    auto tasks = tm.getAllTasks();
-    taskTable->setRowCount(static_cast<int>(tasks.size()));
+void MainWindow::loadTasks(const QString& dateFilter) {
+    std::vector<Task> tasks;
+    if (dateFilter.isEmpty()) {
+        tasks = tm.getAllTasks();
+    } else {
+        tasks = tm.getTasksForDate(dateFilter.toStdString());
+    }
 
+    taskTable->setRowCount(static_cast<int>(tasks.size()));
     for (size_t i = 0; i < tasks.size(); ++i) {
         const Task& t = tasks[i];
         taskTable->setItem(i, 0, new QTableWidgetItem(QString::number(t.id)));
         taskTable->setItem(i, 1, new QTableWidgetItem(QString::fromStdString(t.name)));
         taskTable->setItem(i, 2, new QTableWidgetItem(QString::fromStdString(t.startTime)));
 
-        QString prio = (t.priority == HIGH) ? "高" : (t.priority == MEDIUM ? "中" : "低");
+        QString prio = (t.priority == HIGH) ? "High" : (t.priority == MEDIUM ? "Medium" : "Low");
         taskTable->setItem(i, 3, new QTableWidgetItem(prio));
 
-        QString cat = (t.category == STUDY) ? "学习" : (t.category == ENTERTAINMENT ? "娱乐" : "生活");
+        QString cat = (t.category == STUDY) ? "Study" : (t.category == ENTERTAINMENT ? "Entertainment" : "Life");
         taskTable->setItem(i, 4, new QTableWidgetItem(cat));
 
         taskTable->setItem(i, 5, new QTableWidgetItem(QString::fromStdString(t.remindTime)));
-        taskTable->setItem(i, 6, new QTableWidgetItem(t.reminded ? "是" : "否"));
+        taskTable->setItem(i, 6, new QTableWidgetItem(t.reminded ? "Yes" : "No"));
     }
 }
 
@@ -141,11 +168,13 @@ void MainWindow::showStatusMessage(const QString& msg, int timeout) {
 }
 
 void MainWindow::playAlertSound() {
+    // Try custom ringtone (using QSound for Qt5 compatibility)
     if (!customRingtone.isEmpty() && QFile::exists(customRingtone)) {
         QSound::play(customRingtone);
         return;
     }
 
+    // Fallback: system default sounds
     bool played = false;
     QStringList soundPaths = {
         "/usr/share/sounds/ubuntu/stereo/phone-incoming-call.wav",
@@ -159,20 +188,20 @@ void MainWindow::playAlertSound() {
             break;
         }
     }
- if (!played) {
+    if (!played) {
         QApplication::beep();
     }
 }
 
-// ===== 槽函数 =====
 
+// ------------------ Slots ------------------
 void MainWindow::onAddTask() {
     QString name = nameEdit->text().trimmed();
     QString start = startDateTimeEdit->dateTime().toString("yyyy-MM-dd HH:mm");
     QString remind = remindDateTimeEdit->dateTime().toString("yyyy-MM-dd HH:mm");
 
     if (name.isEmpty()) {
-        QMessageBox::warning(this, "输入错误", "任务名不能为空！");
+        QMessageBox::warning(this, "Input Error", "Task name cannot be empty!");
         return;
     }
 
@@ -181,60 +210,92 @@ void MainWindow::onAddTask() {
 
     bool ok = tm.addTask(name.toStdString(), start.toStdString(), prio, cat, remind.toStdString());
     if (ok) {
-        showStatusMessage("任务添加成功！");
+        showStatusMessage("Task added successfully!");
         loadTasks();
         nameEdit->clear();
     } else {
-        QMessageBox::critical(this, "添加失败", "任务名+开始时间已存在，或文件写入失败！");
+        QMessageBox::critical(this, "Add Failed", "Task name+start time already exists or file write failed!");
     }
 }
+
 void MainWindow::onDeleteTask() {
     int row = taskTable->currentRow();
     if (row < 0) {
-        QMessageBox::warning(this, "未选中", "请先选中要删除的任务行！");
+        QMessageBox::warning(this, "No Selection", "Please select a task to delete!");
         return;
     }
     int id = taskTable->item(row, 0)->text().toInt();
-    auto reply = QMessageBox::question(this, "确认删除", 
-                                       QString("确定要删除 ID 为 %1 的任务吗？").arg(id),
+    auto reply = QMessageBox::question(this, "Confirm Delete",
+                                       QString("Delete task ID %1 ?").arg(id),
                                        QMessageBox::Yes | QMessageBox::No);
-    if (reply == QMessageBox::Yes) {
+
+
+  if (reply == QMessageBox::Yes) {
         if (tm.deleteTask(id)) {
-            showStatusMessage(QString("任务 ID %1 删除成功").arg(id));
+            showStatusMessage(QString("Task ID %1 deleted").arg(id));
             loadTasks();
         } else {
-            QMessageBox::critical(this, "删除失败", "任务不存在或文件写入失败！");
+            QMessageBox::critical(this, "Delete Failed", "Task not found or file write failed!");
         }
     }
 }
 
 void MainWindow::onRefresh() {
     loadTasks();
-    showStatusMessage("列表已刷新");
+    showStatusMessage("List refreshed");
 }
 
 void MainWindow::onCheckReminders() {
-    // 先调用核心检查（更新 reminded 状态并保存）
-    tm.checkReminders();
-
-    // 重新加载表格，获取最新数据
-    loadTasks();
-
-    // 检查是否有新提醒：遍历所有任务，找出 reminded == true 且 id 不在 remindedIds 中的
-    bool hasNewReminder = false;
-    auto tasks = tm.getAllTasks();  // 获取最新副本
-    for (const Task& t : tasks) {
-        if (t.reminded && !remindedIds.contains(t.id)) {
-            // 新提醒！
-            remindedIds.insert(t.id);
-            hasNewReminder = true;
-            // 可以在这里记录具体任务信息，但我们统一弹一次消息
-        }
-    }
-
-    if (hasNewReminder) {
+    if (tm.checkReminders()) {
+        loadTasks();  // update reminded status
         playAlertSound();
-        QMessageBox::information(this, "任务提醒", "有新的任务提醒！请查看任务列表。");
+        QMessageBox::information(this, "Reminder", "One or more tasks have reached their reminder time!");
+    }
+}
+
+void MainWindow::onCalendarClicked(const QDate &date) {
+    QString dateStr = date.toString("yyyy-MM-dd");
+    loadTasks(dateStr);
+    showStatusMessage(QString("Showing tasks for %1").arg(dateStr));
+}
+
+
+// 修正：参数为 (int row, int column)
+void MainWindow::onTableDoubleClicked(int row, int column) {
+    Q_UNUSED(column);
+    int id = taskTable->item(row, 0)->text().toInt();
+    editTask(id);
+}
+
+void MainWindow::editTask(int taskId) {
+    auto allTasks = tm.getAllTasks();
+    auto it = std::find_if(allTasks.begin(), allTasks.end(), [taskId](const Task& t){ return t.id == taskId; });
+    if (it == allTasks.end()) {
+        QMessageBox::warning(this, "Error", "Task not found!");
+        return;
+    }
+    // Open EditTaskDialog
+    EditTaskDialog dlg(*it, this);
+    if (dlg.exec() == QDialog::Accepted) {
+        Task updated = dlg.getTask();
+        // We need to modify the task in TaskManager. Since we don't have an update method yet, we'll delete and re-add.
+        // But we must ensure uniqueness constraint satisfied. Better to implement update in TaskManager.
+        // For now, we'll remove old and add new (if not conflict)
+        if (tm.deleteTask(taskId)) {
+            bool ok = tm.addTask(updated.name, updated.startTime, updated.priority, updated.category, updated.remindTime);
+            if (!ok) {
+                // rollback: re-add old task (we have old task in it)
+                const Task& oldTask = *it;
+                tm.addTask(oldTask.name, oldTask.startTime, oldTask.priority, oldTask.category, oldTask.remindTime);
+                QMessageBox::critical(this, "Update Failed", "Update failed due to duplicate name+time or file error.");
+            } else {
+                loadTasks();
+                showStatusMessage("Task updated successfully!");
+            }
+
+   } else {
+            QMessageBox::critical(this, "Update Failed", "Could not delete old task.");
+        }
     }
 }
 
@@ -244,3 +305,4 @@ void MainWindow::openSettings() {
         applySettings();
     }
 }
+

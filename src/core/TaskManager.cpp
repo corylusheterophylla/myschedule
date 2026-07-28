@@ -24,13 +24,13 @@ void TaskManager::loadFromFile(const std::string& username) {
     nextId = getMaxIdFromTasks() + 1;
 }
 
-void TaskManager::saveToFile() const {
+bool TaskManager::saveToFile() const {
     if (currentUser.empty()) {
         std::cerr << "Error: No user logged in!" << std::endl;
-        return;
+        return false;
     }
     std::lock_guard<std::mutex> lock(mtx);
-    Storage::saveTasks(currentUser, tasks);
+    return Storage::saveTasks(currentUser, tasks);
 }
 
 bool TaskManager::isTaskExists(const std::string& name, const std::string& startTime) const {
@@ -65,7 +65,9 @@ bool TaskManager::addTask(const std::string& name,
     newTask.remindTime = remindTime;
     newTask.reminded = false;
 
-    auto backup = tasks;
+
+
+   auto backup = tasks;
     tasks.push_back(newTask);
     if (!Storage::saveTasks(currentUser, tasks)) {
         tasks = backup;
@@ -97,6 +99,7 @@ bool TaskManager::deleteTask(int id) {
     std::cout << "Task ID " << id << " deleted successfully!" << std::endl;
     return true;
 }
+
 
 std::vector<Task> TaskManager::getTasksForDate(const std::string& date) const {
     std::lock_guard<std::mutex> lock(mtx);
@@ -131,7 +134,8 @@ std::vector<Task> TaskManager::getAllTasks() const {
     return tasks;
 }
 
-void TaskManager::checkReminders() {
+
+bool TaskManager::checkReminders() {
     auto now = std::chrono::system_clock::now();
     std::time_t now_time = std::chrono::system_clock::to_time_t(now);
     std::tm tm_now = *std::localtime(&now_time);
@@ -140,18 +144,18 @@ void TaskManager::checkReminders() {
     std::string currentTime = oss.str();
 
     std::lock_guard<std::mutex> lock(mtx);
-    bool anyReminded = false;
+    bool newReminder = false;
     for (auto& t : tasks) {
         if (!t.reminded && !t.remindTime.empty() && t.remindTime <= currentTime) {
-            std::cout << "\n\033[1;31m[提醒]\033[0m 任务 \"" << t.name 
-                      << "\" (ID: " << t.id << ") 提醒时间 " << t.remindTime << " 已到！" << std::endl;
             t.reminded = true;
-            anyReminded = true;
+            newReminder = true;
+            // 打印到终端（保留CLI兼容）
+            std::cout << "\n\033[1;31m[Reminder]\033[0m Task \"" << t.name 
+                      << "\" (ID: " << t.id << ") reminder time " << t.remindTime << " has come!" << std::endl;
         }
     }
-    if (anyReminded) {
-        if (!Storage::saveTasks(currentUser, tasks)) {
-            std::cerr << "Warning: Failed to save reminder status to file." << std::endl;
-        }
+    if (newReminder) {
+        Storage::saveTasks(currentUser, tasks);
     }
+    return newReminder;
 }
