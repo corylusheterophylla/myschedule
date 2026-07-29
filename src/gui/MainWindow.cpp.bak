@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 #include "SettingsDialog.h"
 #include "EditTaskDialog.h"
+// #include "VoiceInputDialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -8,7 +9,6 @@
 #include <QHeaderView>
 #include <QMessageBox>
 #include <QDateTime>
-#include <QDebug>
 #include <QSound>
 #include <QLineEdit>
 #include <QFile>
@@ -17,7 +17,6 @@
 #include <QAction>
 #include <QSettings>
 #include <QDockWidget>
-#include <QProcess>
 
 MainWindow::MainWindow(const std::string& username, QWidget *parent)
     : QMainWindow(parent), currentUser(username) {
@@ -25,7 +24,6 @@ MainWindow::MainWindow(const std::string& username, QWidget *parent)
     setupUI();
     loadTasks();
     applySettings();
-
 
     reminderTimer = new QTimer(this);
     connect(reminderTimer, &QTimer::timeout, this, &MainWindow::onCheckReminders);
@@ -56,7 +54,8 @@ void MainWindow::setupUI() {
     setWindowTitle(QString("Schedule Manager - %1").arg(QString::fromStdString(currentUser)));
     setMinimumSize(1100, 700);
 
-    // ---- Menu Bar ----
+
+  // ---- Menu Bar ----
     QMenuBar *menuBar = new QMenuBar(this);
     QMenu *settingsMenu = menuBar->addMenu("Settings");
     QAction *settingsAction = new QAction("Preferences", this);
@@ -64,7 +63,7 @@ void MainWindow::setupUI() {
     connect(settingsAction, &QAction::triggered, this, &MainWindow::openSettings);
     setMenuBar(menuBar);
 
-  // ---- Central Widget ----
+    // ---- Central Widget ----
     QWidget *centralWidget = new QWidget(this);
     setCentralWidget(centralWidget);
     QVBoxLayout *mainLayout = new QVBoxLayout(centralWidget);
@@ -88,8 +87,16 @@ void MainWindow::setupUI() {
     priorityCombo->addItems({"High", "Medium", "Low"});
     categoryCombo = new QComboBox(this);
     categoryCombo->addItems({"Study", "Entertainment", "Life"});
+ // ✅ 语音按钮：放在任务名右侧
+    QHBoxLayout *nameLayout = new QHBoxLayout();
+    nameLayout->addWidget(nameEdit);
+////    QPushButton *voiceBtn = new QPushButton("🎤", this);
+////    voiceBtn->setToolTip("Voice Input");
+////    voiceBtn->setFixedSize(30, 30);
+////    connect(voiceBtn, &QPushButton::clicked, this, &MainWindow::onVoiceInput);
+////    nameLayout->addWidget(voiceBtn);
+////    formLayout->addRow("Task Name:", nameLayout);
 
-    formLayout->addRow("Task Name:", nameEdit);
     formLayout->addRow("Start Time:", startDateTimeEdit);
     formLayout->addRow("Priority:", priorityCombo);
     formLayout->addRow("Category:", categoryCombo);
@@ -99,7 +106,7 @@ void MainWindow::setupUI() {
     connect(addBtn, &QPushButton::clicked, this, &MainWindow::onAddTask);
     formLayout->addRow("", addBtn);
 
-   mainLayout->addWidget(addGroup);
+    mainLayout->addWidget(addGroup);
 
     // ---- Task Table ----
     taskTable = new QTableWidget(this);
@@ -108,9 +115,9 @@ void MainWindow::setupUI() {
     taskTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     taskTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     taskTable->setSelectionMode(QAbstractItemView::SingleSelection);
-    // 使用 cellDoubleClicked 信号，参数为 (row, column)
     connect(taskTable, &QTableWidget::cellDoubleClicked, this, &MainWindow::onTableDoubleClicked);
     mainLayout->addWidget(taskTable);
+
 
     // ---- Button Bar ----
     QHBoxLayout *btnLayout = new QHBoxLayout();
@@ -143,7 +150,7 @@ void MainWindow::loadTasks(const QString& dateFilter) {
         tasks = tm.getTasksForDate(dateFilter.toStdString());
     }
 
-    taskTable->setRowCount(static_cast<int>(tasks.size()));
+   taskTable->setRowCount(static_cast<int>(tasks.size()));
     for (size_t i = 0; i < tasks.size(); ++i) {
         const Task& t = tasks[i];
         taskTable->setItem(i, 0, new QTableWidgetItem(QString::number(t.id)));
@@ -165,16 +172,14 @@ void MainWindow::showStatusMessage(const QString& msg, int timeout) {
     statusBar()->showMessage(msg, timeout);
 }
 
-
 void MainWindow::playAlertSound() {
-    // Try custom ringtone (using QSound for Qt5 compatibility)
     if (!customRingtone.isEmpty() && QFile::exists(customRingtone)) {
         QSound::play(customRingtone);
         return;
     }
 
-    // Fallback: system default sounds
-    bool played = false;
+
+   bool played = false;
     QStringList soundPaths = {
         "/usr/share/sounds/ubuntu/stereo/phone-incoming-call.wav",
         "/usr/share/sounds/alsa/Rear_Left.wav",
@@ -205,6 +210,7 @@ void MainWindow::onAddTask() {
 
     Priority prio = static_cast<Priority>(priorityCombo->currentIndex());
     Category cat = static_cast<Category>(categoryCombo->currentIndex());
+
 
     bool ok = tm.addTask(name.toStdString(), start.toStdString(), prio, cat, remind.toStdString());
     if (ok) {
@@ -243,7 +249,7 @@ void MainWindow::onRefresh() {
 
 void MainWindow::onCheckReminders() {
     if (tm.checkReminders()) {
-        loadTasks();  // update reminded status
+        loadTasks();
         playAlertSound();
         QMessageBox::information(this, "Reminder", "One or more tasks have reached their reminder time!");
     }
@@ -255,13 +261,11 @@ void MainWindow::onCalendarClicked(const QDate &date) {
     showStatusMessage(QString("Showing tasks for %1").arg(dateStr));
 }
 
-// 修正：参数为 (int row, int column)
 void MainWindow::onTableDoubleClicked(int row, int column) {
     Q_UNUSED(column);
     int id = taskTable->item(row, 0)->text().toInt();
     editTask(id);
 }
-
 void MainWindow::editTask(int taskId) {
     auto allTasks = tm.getAllTasks();
     auto it = std::find_if(allTasks.begin(), allTasks.end(), [taskId](const Task& t){ return t.id == taskId; });
@@ -269,17 +273,12 @@ void MainWindow::editTask(int taskId) {
         QMessageBox::warning(this, "Error", "Task not found!");
         return;
     }
-    // Open EditTaskDialog
     EditTaskDialog dlg(*it, this);
     if (dlg.exec() == QDialog::Accepted) {
         Task updated = dlg.getTask();
-        // We need to modify the task in TaskManager. Since we don't have an update method yet, we'll delete and re-add.
-        // But we must ensure uniqueness constraint satisfied. Better to implement update in TaskManager.
-        // For now, we'll remove old and add new (if not conflict)
         if (tm.deleteTask(taskId)) {
             bool ok = tm.addTask(updated.name, updated.startTime, updated.priority, updated.category, updated.remindTime);
-   if (!ok) {
-                // rollback: re-add old task (we have old task in it)
+            if (!ok) {
                 const Task& oldTask = *it;
                 tm.addTask(oldTask.name, oldTask.startTime, oldTask.priority, oldTask.category, oldTask.remindTime);
                 QMessageBox::critical(this, "Update Failed", "Update failed due to duplicate name+time or file error.");
@@ -297,5 +296,17 @@ void MainWindow::openSettings() {
     SettingsDialog dlg(this);
     if (dlg.exec() == QDialog::Accepted) {
         applySettings();
+    }
+}
+
+// ---- 语音输入 ----
+void MainWindow::onVoiceInput() {
+    VoiceInputDialog dlg(this);
+    if (dlg.exec() == QDialog::Accepted) {
+        QString text = dlg.getRecognizedText();
+        if (!text.isEmpty()) {
+            nameEdit->setText(text);
+            showStatusMessage("Voice input recognized: " + text);
+        }
     }
 }

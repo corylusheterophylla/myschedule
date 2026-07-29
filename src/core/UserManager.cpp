@@ -5,8 +5,10 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <iostream>
+#include <filesystem>   // 新增
 
 using json = nlohmann::json;
+namespace fs = std::filesystem;
 
 std::string UserManager::usersFilePath = "data/users.json";
 
@@ -24,6 +26,13 @@ std::unordered_map<std::string, std::string> UserManager::loadUsers() {
 }
 
 void UserManager::saveUsers(const std::unordered_map<std::string, std::string>& users) {
+    // 确保 data/ 目录存在
+    fs::path dir = "data";
+    if (!fs::exists(dir)) {
+        if (!fs::create_directory(dir)) {
+            std::cerr << "Warning: Cannot create data directory!" << std::endl;
+        }
+    }
     json j(users);
     std::ofstream file(usersFilePath);
     if (file.is_open()) {
@@ -54,7 +63,7 @@ bool UserManager::verifyPassword(const std::string& plain, const std::string& st
 bool UserManager::registerUser(const std::string& username, const std::string& password) {
     auto users = loadUsers();
     if (users.find(username) != users.end()) {
-        return false; // 用户已存在
+        return false;
     }
     users[username] = hashPassword(password);
     saveUsers(users);
@@ -65,7 +74,7 @@ bool UserManager::authenticate(const std::string& username, const std::string& p
     auto users = loadUsers();
     auto it = users.find(username);
     if (it == users.end()) {
-        return false; // 用户不存在
+        return false;
     }
     return verifyPassword(password, it->second);
 }

@@ -26,13 +26,11 @@ private slots:
     void onCheckReminders();
     void openSettings();
     void onCalendarClicked(const QDate &date);
-    void onTableDoubleClicked(int row, int column);  // 编辑任务
-
+    void onTableDoubleClicked(int row, int column);
 private:
     TaskManager tm;
     std::string currentUser;
 
-    // UI components
     QTableWidget *taskTable;
     QLineEdit *nameEdit;
     QDateTimeEdit *startDateTimeEdit;
@@ -58,3 +56,6 @@ private:
 };
 
 #endif
+
+
+
